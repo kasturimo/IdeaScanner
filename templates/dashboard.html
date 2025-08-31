@@ -2,7 +2,7 @@
 {% block content %}
 <div class="card p-4">
   <h3 class="text-center">Idea Analysis</h3>
-  <form method="POST">
+  <form method="POST" action="/dashboard">
     <div class="mb-3">
       <label>Enter your idea</label>
       <textarea name="idea" class="form-control" rows="4" required></textarea>
@@ -10,23 +10,15 @@
     <button type="submit" class="btn btn-primary w-100">Analyze Idea</button>
   </form>
 
-  {% if analysis %}
-  <hr>
-  <h5>Latest Analysis (Score: {{ score }}/100)</h5>
-  <p>{{ analysis }}</p>
-  {% endif %}
-
   {% if ideas %}
   <hr>
-  <h5>Past Ideas</h5>
-  <ul class="list-group">
-    {% for idea in ideas|reverse %}
-    <li class="list-group-item">
-      <strong>Idea:</strong> {{ idea.idea_text }}<br>
-      <strong>Analysis:</strong> {{ idea.analysis }}
-    </li>
+  <h5>Your Past Analyses</h5>
+  <ul>
+    {% for idea in ideas %}
+      <li><strong>{{ idea.idea_text }}</strong><br>{{ idea.analysis }}</li>
     {% endfor %}
   </ul>
   {% endif %}
 </div>
 {% endblock %}
+
