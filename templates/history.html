@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card p-4">
+  <h3 class="text-center">Past Ideas</h3>
+  {% if ideas %}
+  <ul class="list-group">
+    {% for idea in ideas|reverse %}
+    <li class="list-group-item">
+      <strong>Idea:</strong> {{ idea.idea_text }}<br>
+      <strong>Analysis:</strong> {{ idea.analysis }}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>No past ideas yet.</p>
+  {% endif %}
+</div>
+{% endblock %}
