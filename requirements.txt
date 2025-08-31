@@ -7,4 +7,7 @@ flask_cors
 openai
 python-dotenv
 werkzeug
+Flask-Mail
+itsdangerous
+
 
