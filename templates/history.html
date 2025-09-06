@@ -1,16 +1,22 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card p-4">
-  <h3 class="text-center">Idea History</h3>
+  <h3 class="text-center">Your Idea History</h3>
   {% if ideas %}
-  <ul>
-    {% for idea in ideas %}
-      <li><strong>{{ idea.idea_text }}</strong><br>{{ idea.analysis }}</li>
-    {% endfor %}
-  </ul>
+    <ul class="list-group">
+      {% for idea in ideas %}
+      <li class="list-group-item">
+        <strong>Idea:</strong> {{ idea.idea_text }} <br>
+        <strong>Location:</strong> {{ idea.location if idea.location else "Not specified" }} <br>
+        <strong>Analysis:</strong> {{ idea.analysis }} <br>
+        <small class="text-muted">Created at: {{ idea.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+      </li>
+      {% endfor %}
+    </ul>
   {% else %}
-    <p>No ideas submitted yet.</p>
+    <p class="text-center">No ideas analyzed yet.</p>
   {% endif %}
 </div>
 {% endblock %}
+
 
