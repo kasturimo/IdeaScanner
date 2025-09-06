@@ -1,20 +1,20 @@
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
-import openai
 import os
 from datetime import datetime
 from dotenv import load_dotenv
+from openai import OpenAI
 
-# Load environment variables locally
+# Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
 
-# OpenAI API key
-openai.api_key = os.environ.get("OPENAI_API_KEY")
+# OpenAI client
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 # Database setup
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL", "sqlite:///database.db")
@@ -29,14 +29,14 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
-    location = db.Column(db.String(100))  # user’s default location
+    location = db.Column(db.String(100))
 
 class Idea(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     idea_text = db.Column(db.String(500), nullable=False)
-    analysis = db.Column(db.String(1000))  # OpenAI analysis
-    location = db.Column(db.String(100))   # location tied to the idea
+    analysis = db.Column(db.String(2000))
+    location = db.Column(db.String(100))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 # Create tables
@@ -46,7 +46,7 @@ with app.app_context():
 # Routes
 @app.route("/")
 def index():
-    return redirect(url_for("login"))  # ✅ Redirects to login instead of index.html
+    return render_template("index.html")
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
@@ -78,6 +78,32 @@ def login():
         return jsonify({"error": "Invalid credentials!"}), 401
     return render_template("login.html")
 
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    if request.method == "POST":
+        email = request.form.get("email")
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            flash("No account found with that email.", "danger")
+            return redirect(url_for("forgot_password"))
+
+        # Simulated reset link (in production, send email!)
+        reset_link = url_for("reset_password", user_id=user.id, _external=True)
+        flash(f"Password reset link (simulate email): {reset_link}", "info")
+        return redirect(url_for("login"))
+    return render_template("forgot_password.html")
+
+@app.route("/reset-password/<int:user_id>", methods=["GET", "POST"])
+def reset_password(user_id):
+    user = User.query.get_or_404(user_id)
+    if request.method == "POST":
+        new_password = request.form.get("password")
+        user.password = generate_password_hash(new_password)
+        db.session.commit()
+        flash("Password has been reset. You can now login.", "success")
+        return redirect(url_for("login"))
+    return render_template("reset_password.html", user=user)
+
 @app.route("/dashboard", methods=["GET", "POST"])
 def dashboard():
     if "user_id" not in session:
@@ -88,25 +114,27 @@ def dashboard():
         idea_text = request.form.get("idea")
         location = request.form.get("location")
 
-        # Use user’s default location if none chosen
         user = User.query.get(session["user_id"])
         if not location:
             location = user.location
 
-        # Call OpenAI to analyze the idea
         try:
-            response = openai.Completion.create(
-                model="text-davinci-003",
-                prompt=f"Analyze this startup idea for feasibility and potential impact in {location}:\n\n{idea_text}\n\nGive a viability score (0–100) and short reasoning.",
-                max_tokens=200
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are an expert startup analyst."},
+                    {"role": "user", "content": f"Analyze this startup idea for feasibility and potential impact in {location}:\n\n{idea_text}\n\nGive a viability score (0–100) and short reasoning."}
+                ],
+                max_tokens=300
             )
-            analysis = response.choices[0].text.strip()
-            # crude way to extract score
-            score = "".join([c for c in analysis if c.isdigit()])
-            if score:
-                score = int(score[:3]) if len(score) >= 2 else int(score)
+            analysis = response.choices[0].message.content.strip()
+
+            score_digits = "".join([c for c in analysis if c.isdigit()])
+            if score_digits:
+                score = int(score_digits[:3]) if len(score_digits) >= 2 else int(score_digits)
             else:
                 score = None
+
         except Exception as e:
             analysis = f"Error analyzing idea: {str(e)}"
 
@@ -126,11 +154,11 @@ def history():
 @app.route("/logout")
 def logout():
     session.pop("user_id", None)
-    return redirect(url_for("login"))
+    return redirect(url_for("index"))
 
-# Run app locally
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
 
 
 
