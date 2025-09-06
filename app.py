@@ -1,114 +1,127 @@
-# app.py
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
-from flask_sqlalchemy import SQLAlchemy
-from flask_cors import CORS
-from werkzeug.security import generate_password_hash, check_password_hash
-import openai
 import os
-from flask_mail import Mail, Message
-from itsdangerous import URLSafeTimedSerializer
-
-# Load environment variables locally
+import smtplib
+import secrets
+from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
+
+# Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
 
-# OpenAI API key
-openai.api_key = os.environ.get("OPENAI_API_KEY")
+# Secret key & DB setup
+app.secret_key = os.environ.get("SECRET_KEY", "fallback_secret")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///users.db")
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# Database setup
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL", "sqlite:///database.db")
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# Enable CORS
-CORS(app, supports_credentials=True)
+# Email credentials
+EMAIL_USER = os.environ.get("EMAIL_USER")
+EMAIL_PASS = os.environ.get("EMAIL_PASS")
 
-# Email configuration
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = os.environ.get("EMAIL_USER")
-app.config['MAIL_PASSWORD'] = os.environ.get("EMAIL_PASS")
-mail = Mail(app)
-
-# Serializer for email verification
-s = URLSafeTimedSerializer(app.secret_key)
-
-# Models
+# ---------------- MODELS ---------------- #
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
-    country = db.Column(db.String(50))
+    location = db.Column(db.String(100), nullable=True)
     is_verified = db.Column(db.Boolean, default=False)
+    verification_token = db.Column(db.String(100), nullable=True)
 
-class Idea(db.Model):
+class IdeaHistory(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    idea_text = db.Column(db.String(500), nullable=False)
-    analysis = db.Column(db.String(1000))  # store OpenAI analysis result
+    idea = db.Column(db.Text, nullable=False)
+    analysis = db.Column(db.Text, nullable=False)
+    score = db.Column(db.Integer, nullable=False)
+    location = db.Column(db.String(100), nullable=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
 
-# Create tables
-with app.app_context():
-    db.create_all()
+# ---------------- EMAIL HELPER ---------------- #
+def send_verification_email(user_email, token):
+    try:
+        msg = MIMEMultipart()
+        msg["From"] = EMAIL_USER
+        msg["To"] = user_email
+        msg["Subject"] = "Verify your IdeaScanner account"
 
-# Routes
+        verify_url = f"{request.url_root}verify/{token}"
+        body = f"Hi,\n\nPlease verify your email by clicking the link below:\n{verify_url}\n\nThanks,\nIdeaScanner Team"
+        msg.attach(MIMEText(body, "plain"))
+
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.starttls()
+            server.login(EMAIL_USER, EMAIL_PASS)
+            server.sendmail(EMAIL_USER, user_email, msg.as_string())
+    except Exception as e:
+        print("Error sending email:", e)
+
+# ---------------- ROUTES ---------------- #
 @app.route("/")
-def index():
-    return render_template("index.html")
+def home():
+    return redirect(url_for("login"))
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
-        email = request.form.get("email")
-        password = request.form.get("password")
-        country = request.form.get("country")
+        email = request.form["email"]
+        password = request.form["password"]
+        location = request.form.get("location")
 
-        if User.query.filter_by(username=email).first():
-            return jsonify({"error": "User already exists!"}), 400
+        existing_user = User.query.filter_by(email=email).first()
+        if existing_user:
+            flash("Email already exists. Please log in.", "danger")
+            return redirect(url_for("login"))
 
-        hashed_pw = generate_password_hash(password)
-        new_user = User(username=email, password=hashed_pw, country=country)
+        hashed_pw = generate_password_hash(password, method="sha256")
+        token = secrets.token_urlsafe(16)
+
+        new_user = User(email=email, password=hashed_pw, location=location,
+                        is_verified=False, verification_token=token)
         db.session.add(new_user)
         db.session.commit()
 
-        # Send verification email
-        token = s.dumps(email, salt='email-confirm')
-        confirm_url = url_for('confirm_email', token=token, _external=True)
-        msg = Message('Confirm Your Email', sender=app.config['MAIL_USERNAME'], recipients=[email])
-        msg.body = f'Click to confirm your account: {confirm_url}'
-        mail.send(msg)
+        send_verification_email(email, token)
+        flash("Signup successful! Please check your email to verify your account.", "info")
+        return redirect(url_for("login"))
 
-        return "Signup successful! Please check your email to confirm your account."
     return render_template("signup.html")
 
-@app.route('/confirm/<token>')
-def confirm_email(token):
-    try:
-        email = s.loads(token, salt='email-confirm', max_age=3600)  # 1 hour expiry
-        user = User.query.filter_by(username=email).first()
-        if user:
-            user.is_verified = True
-            db.session.commit()
-            return "Email confirmed! You can now log in."
-    except:
-        return "The confirmation link is invalid or expired."
+@app.route("/verify/<token>")
+def verify(token):
+    user = User.query.filter_by(verification_token=token).first()
+    if user:
+        user.is_verified = True
+        user.verification_token = None
+        db.session.commit()
+        flash("Email verified! You can now log in.", "success")
+        return redirect(url_for("login"))
+    else:
+        flash("Invalid or expired verification link.", "danger")
+        return redirect(url_for("signup"))
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        email = request.form.get("email")
-        password = request.form.get("password")
-        user = User.query.filter_by(username=email).first()
+        email = request.form["email"]
+        password = request.form["password"]
+
+        user = User.query.filter_by(email=email).first()
         if user and check_password_hash(user.password, password):
             if not user.is_verified:
-                return "Please verify your email first."
+                flash("Please verify your email before logging in.", "warning")
+                return redirect(url_for("login"))
+
             session["user_id"] = user.id
+            flash("Login successful!", "success")
             return redirect(url_for("dashboard"))
-        return jsonify({"error": "Invalid credentials!"}), 401
+        else:
+            flash("Invalid email or password.", "danger")
+
     return render_template("login.html")
 
 @app.route("/dashboard", methods=["GET", "POST"])
@@ -116,41 +129,43 @@ def dashboard():
     if "user_id" not in session:
         return redirect(url_for("login"))
 
+    user = User.query.get(session["user_id"])
+    analysis, score = None, None
+
     if request.method == "POST":
-        idea_text = request.form.get("idea")
-        try:
-            response = openai.Completion.create(
-                model="text-davinci-003",
-                prompt=f"Analyze this idea for feasibility and potential impact:\n\n{idea_text}",
-                max_tokens=150
-            )
-            analysis = response.choices[0].text.strip()
-        except Exception as e:
-            analysis = f"Error analyzing idea: {str(e)}"
+        idea = request.form["idea"]
+        location = request.form.get("location")
 
-        new_idea = Idea(user_id=session["user_id"], idea_text=idea_text, analysis=analysis)
-        db.session.add(new_idea)
+        # TODO: Replace this with OpenAI analysis
+        analysis = f"Your idea '{idea}' seems promising in {location or user.location or 'your region'}."
+        score = 75  # Dummy score
+
+        new_history = IdeaHistory(idea=idea, analysis=analysis, score=score,
+                                  location=location or user.location, user_id=user.id)
+        db.session.add(new_history)
         db.session.commit()
-        return redirect(url_for("dashboard"))
 
-    current_user = User.query.get(session["user_id"])
-    ideas = Idea.query.filter_by(user_id=current_user.id).all()
-    return render_template("dashboard.html", ideas=ideas)
+    return render_template("dashboard.html", analysis=analysis, score=score)
 
 @app.route("/history")
 def history():
     if "user_id" not in session:
         return redirect(url_for("login"))
-    current_user = User.query.get(session["user_id"])
-    ideas = Idea.query.filter_by(user_id=current_user.id).all()
-    return render_template("history.html", ideas=ideas)
+
+    user_id = session["user_id"]
+    history_items = IdeaHistory.query.filter_by(user_id=user_id).all()
+    return render_template("history.html", history=history_items)
 
 @app.route("/logout")
 def logout():
     session.pop("user_id", None)
-    return redirect(url_for("index"))
+    flash("Logged out successfully.", "info")
+    return redirect(url_for("login"))
 
-# Run app locally
+# ---------------- RUN ---------------- #
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    with app.app_context():
+        db.create_all()
+    app.run(debug=True)
+
 
