@@ -7,18 +7,29 @@
       <label>Enter your idea</label>
       <textarea name="idea" class="form-control" rows="4" required></textarea>
     </div>
+    <div class="mb-3">
+      <label>Select Location (optional)</label>
+      <select class="form-control" name="location">
+        <option value="">-- Use my default location --</option>
+        <option value="India">India</option>
+        <option value="United States">United States</option>
+        <option value="United Kingdom">United Kingdom</option>
+        <option value="Canada">Canada</option>
+        <option value="Australia">Australia</option>
+        <option value="Germany">Germany</option>
+        <option value="France">France</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
     <button type="submit" class="btn btn-primary w-100">Analyze Idea</button>
   </form>
 
-  {% if ideas %}
+  {% if analysis %}
   <hr>
-  <h5>Your Past Analyses</h5>
-  <ul>
-    {% for idea in ideas %}
-      <li><strong>{{ idea.idea_text }}</strong><br>{{ idea.analysis }}</li>
-    {% endfor %}
-  </ul>
+  <h5>Viability Score: {{ score }}/100</h5>
+  <p>{{ analysis }}</p>
   {% endif %}
 </div>
 {% endblock %}
+
 
