@@ -46,7 +46,7 @@ with app.app_context():
 # Routes
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return redirect(url_for("login"))  # ✅ Redirects to login instead of index.html
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
@@ -126,11 +126,12 @@ def history():
 @app.route("/logout")
 def logout():
     session.pop("user_id", None)
-    return redirect(url_for("index"))
+    return redirect(url_for("login"))
 
 # Run app locally
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
 
 
 
