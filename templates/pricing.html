@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card p-4 text-center">
+  <h3>Buy Analysis Credit</h3>
+  {% if message %}
+    <div class="alert alert-info mt-3">{{ message }}</div>
+  {% endif %}
+  <p class="mt-2">Your pricing group: <strong>{{ pricing_label }}</strong></p>
+  <p>Price: <strong>${{ '%.2f' % (price_cents/100) }}</strong> for 1 credit</p>
+  <form method="POST" action="/create-checkout-session">
+    <button type="submit" class="btn btn-success">Proceed to Stripe Checkout</button>
+  </form>
+  <p class="mt-3"><a href="/dashboard">Back to Dashboard</a></p>
+</div>
+{% endblock %}
