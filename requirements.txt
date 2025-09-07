@@ -1,12 +1,11 @@
-flask
-flask_sqlalchemy
-flask_mail
-flask_cors
-python-dotenv
-werkzeug
-authlib
-stripe
-openai
+Flask==2.3.5
+Flask-SQLAlchemy==3.0.5
+Flask-Cors==3.0.10
+Authlib==1.2.1
+openai==1.27.8
+python-dotenv==1.0.0
+Werkzeug==2.3.8
+
 
 
 
