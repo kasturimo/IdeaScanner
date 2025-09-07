@@ -3,13 +3,14 @@
 <div class="card p-4">
   <h3 class="text-center">Your Idea History</h3>
   {% if ideas %}
-    <ul class="list-group">
+    <ul class="list-group mt-3">
       {% for idea in ideas %}
       <li class="list-group-item">
-        <strong>Idea:</strong> {{ idea.idea_text }} <br>
-        <strong>Location:</strong> {{ idea.location if idea.location else "Not specified" }} <br>
-        <strong>Analysis:</strong> {{ idea.analysis }} <br>
-        <small class="text-muted">Created at: {{ idea.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+        <div><strong>Idea:</strong> {{ idea.idea_text }}</div>
+        <div><strong>Location:</strong> {{ idea.location or "Not specified" }}</div>
+        <div><strong>Score:</strong> {{ idea.score if idea.score is not none else "N/A" }}</div>
+        <div class="mt-2"><strong>Analysis:</strong><br><pre style="white-space: pre-wrap; margin:0;">{{ idea.analysis }}</pre></div>
+        <div><small class="text-muted">Created at: {{ idea.created_at.strftime('%Y-%m-%d %H:%M') }}</small></div>
       </li>
       {% endfor %}
     </ul>
@@ -18,5 +19,6 @@
   {% endif %}
 </div>
 {% endblock %}
+
 
 
