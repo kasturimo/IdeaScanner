@@ -1,13 +1,12 @@
-gunicorn
 flask
 flask_sqlalchemy
-flask_bcrypt
-flask_jwt_extended
+flask_mail
 flask_cors
-openai
 python-dotenv
 werkzeug
-Flask-Mail
-itsdangerous
+authlib
+stripe
+openai
+
 
 
