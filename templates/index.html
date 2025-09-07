@@ -1,9 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card p-4 text-center">
-  <h1>Welcome to IdeaScanner</h1>
-  <p>Analyze your startup ideas and track them easily.</p>
-  <a class="btn btn-primary mt-3" href="/signup">Get Started</a>
-  <a class="btn btn-secondary mt-3" href="/login">Login</a>
+<div class="card p-5 text-center">
+  <h1 class="mb-3">Welcome to IdeaScanner</h1>
+  <p class="lead">Analyze your startup ideas and track insights. First 2 analyses are free.</p>
+  {% if user %}
+    <a class="btn btn-primary mt-3" href="/dashboard">Go to Dashboard</a>
+  {% else %}
+    <a class="btn btn-danger mt-3" href="/login">Login with Google</a>
+  {% endif %}
 </div>
 {% endblock %}
+
