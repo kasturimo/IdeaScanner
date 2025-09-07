@@ -1,14 +1,9 @@
 # IdeaScanner
+A startup idea analysis app with backend in Flask and Android frontend.
+Features:
+- User registration and login (email & Google)
+- Idea analysis using OpenAI API
+- Idea history and profile
+- Freemium model with country-based pricing
 
-IdeaScanner is a Flask web app that allows users to submit ideas and receive an AI-generated analysis using OpenAI. Past ideas and analyses are stored for each user.
-
-## Features
-- User signup/login
-- Submit ideas for AI analysis
-- Store and view past ideas and analyses
-- Secure password hashing
-
-## Requirements
-- Python 3.9+
-- OpenAI API Key
 
