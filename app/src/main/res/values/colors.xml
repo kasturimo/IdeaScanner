@@ -1,5 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Primary theme colors -->
     <color name="purple_500">#6200EE</color>
     <color name="purple_700">#3700B3</color>
     <color name="teal_200">#03DAC5</color>
+
+    <!-- Backgrounds -->
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="light_gray">#F5F5F5</color>
+    <color name="dark_gray">#616161</color>
+
+    <!-- Text colors -->
+    <color name="text_primary">#212121</color>
+    <color name="text_secondary">#757575</color>
+    <color name="text_hint">#9E9E9E</color>
+
+    <!-- Buttons and accents -->
+    <color name="button_primary">@color/purple_500</color>
+    <color name="button_secondary">@color/teal_200</color>
+    <color name="error_color">#B00020</color>
+
+    <!-- Optional ripple effect -->
+    <color name="ripple_color">#3700B3</color>
 </resources>
+
