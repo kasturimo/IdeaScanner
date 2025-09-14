@@ -1,0 +1,20 @@
+workflows:
+  android-release:
+    name: Build Android Release
+    environment:
+      sdk: 34
+      java: 17
+    scripts:
+      - name: Set up Android
+        script: |
+          yes | sdkmanager --licenses
+      - name: Build Android App Bundle
+        script: |
+          cd app
+          ./gradlew bundleRelease
+    artifacts:
+      - app/build/outputs/**/*.aab
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com
