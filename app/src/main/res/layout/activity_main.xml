@@ -1,34 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:orientation="vertical"
-    android:gravity="center_horizontal"
-    android:padding="20dp"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
-
-    <TextView
-        android:id="@+id/tvStatus"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Not signed in"
-        android:textSize="16sp"
-        android:padding="8dp" />
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="24dp"
+    tools:context=".MainActivity">
 
     <Button
-        android:id="@+id/btnGoogleSignIn"
+        android:id="@+id/signInButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Sign in with Google" />
-
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="16dp" />
+        android:text="Sign in with Google"
+        android:backgroundTint="@color/purple_500"
+        android:textColor="@android:color/white"
+        android:layout_marginBottom="16dp" />
 
     <Button
-        android:id="@+id/btnPurchase"
+        android:id="@+id/buyButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Buy 10 credits" />
+        android:text="Buy Idea Analysis"
+        android:backgroundTint="@color/teal_700"
+        android:textColor="@android:color/white" />
 
 </LinearLayout>
+
 
