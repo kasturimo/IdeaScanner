@@ -1,216 +1,112 @@
 package com.ideascanner
 
-import android.content.Intent
 import android.os.Bundle
-import android.util.Log
+import android.widget.Button
 import android.widget.Toast
-import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import com.android.billingclient.api.*
-import com.ideascanner.databinding.ActivityMainBinding
 import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInAccount
+import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
-import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
+import com.android.billingclient.api.*
 
-class MainActivity : AppCompatActivity(), PurchasesUpdatedListener {
-    private lateinit var binding: ActivityMainBinding
+class MainActivity : AppCompatActivity() {
 
-    // Google Sign-in
-    private lateinit var googleSignInLauncher: ActivityResultLauncher<Intent>
-    private val RC_SIGN_IN = 1001
-
-    // Billing
+    private lateinit var signInButton: Button
+    private lateinit var buyButton: Button
+    private lateinit var googleSignInClient: GoogleSignInClient
     private lateinit var billingClient: BillingClient
-    private val SKU_ID = "ideacredit_10" // <-- Replace with your SKU id in Play Console
-    private val PACKAGE_NAME = "com.ideascanner"
+
+    private val RC_SIGN_IN = 100
+    private val PRODUCT_ID = "idea_analysis" // must match Play Console
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+        setContentView(R.layout.activity_main)
 
-        setupGoogleSignInLauncher()
-        initBillingClient()
+        signInButton = findViewById(R.id.signInButton)
+        buyButton = findViewById(R.id.buyButton)
 
-        binding.btnGoogleSignIn.setOnClickListener {
-            startGoogleSignIn()
-        }
-
-        binding.btnPurchase.setOnClickListener {
-            startPurchaseFlow()
-        }
-
-        // If you want auto-login check:
-        val acct = GoogleSignIn.getLastSignedInAccount(this)
-        acct?.let { updateUiAfterSignIn(it) }
-    }
-
-    // -------------------------
-    // Google Sign-In
-    // -------------------------
-    private fun setupGoogleSignInLauncher() {
-        googleSignInLauncher = registerForActivityResult(
-            ActivityResultContracts.StartActivityForResult()
-        ) { result ->
-            try {
-                val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-                val account = task.getResult(ApiException::class.java)
-                handleGoogleAccount(account)
-            } catch (e: ApiException) {
-                Log.w("MainActivity", "Google sign-in failed: ${e.statusCode}")
-                Toast.makeText(this, "Google sign-in failed", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    private fun startGoogleSignIn() {
-        // NOTE: Add your web client ID into strings.xml (see below) and replace R.string.default_web_client_id
+        // ✅ Configure Google Sign-In
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
-            .requestId() // returns Google id
-            .requestIdToken(getString(R.string.default_web_client_id)) // <-- needed for backend verification if required
             .build()
-        val client = GoogleSignIn.getClient(this, gso)
-        googleSignInLauncher.launch(client.signInIntent)
-    }
+        googleSignInClient = GoogleSignIn.getClient(this, gso)
 
-    private fun handleGoogleAccount(account: GoogleSignInAccount?) {
-        if (account == null) {
-            Toast.makeText(this, "Google account is null", Toast.LENGTH_SHORT).show()
-            return
-        }
-        updateUiAfterSignIn(account)
+        signInButton.setOnClickListener { signInWithGoogle() }
 
-        // Send basic info to backend to create/login user and obtain JWT token
-        val body = mapOf(
-            "email" to (account.email ?: ""),
-            "google_id" to (account.id ?: ""),
-            "location" to "" // optional: get from UI
-        )
-        ApiClient.instance.googleLogin(body).enqueue(object: Callback<AuthResponse> {
-            override fun onResponse(call: Call<AuthResponse>, response: Response<AuthResponse>) {
-                val b = response.body()
-                if (b != null && b.ok && b.access_token != null) {
-                    Storage.saveToken(this@MainActivity, b.access_token)
-                    Toast.makeText(this@MainActivity, "Logged in", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(this@MainActivity, "Backend login failed", Toast.LENGTH_SHORT).show()
+        // ✅ Setup Billing
+        billingClient = BillingClient.newBuilder(this)
+            .setListener { billingResult, purchases ->
+                if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
+                    for (purchase in purchases) {
+                        verifyPurchase(purchase)
+                    }
                 }
             }
-            override fun onFailure(call: Call<AuthResponse>, t: Throwable) {
-                Toast.makeText(this@MainActivity, "Network error: ${t.localizedMessage}", Toast.LENGTH_SHORT).show()
-            }
-        })
-    }
-
-    private fun updateUiAfterSignIn(account: GoogleSignInAccount) {
-        binding.tvStatus.text = "Signed in: ${account.email}"
-    }
-
-    // -------------------------
-    // Billing
-    // -------------------------
-    private fun initBillingClient() {
-        billingClient = BillingClient.newBuilder(this)
             .enablePendingPurchases()
-            .setListener(this)
             .build()
 
         billingClient.startConnection(object : BillingClientStateListener {
             override fun onBillingSetupFinished(billingResult: BillingResult) {
                 if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                    Log.d("MainActivity", "Billing ready")
-                    // Optionally query purchases or SKUs right away
-                } else {
-                    Log.w("MainActivity", "Billing setup failed: ${billingResult.debugMessage}")
+                    Toast.makeText(this@MainActivity, "Billing ready", Toast.LENGTH_SHORT).show()
                 }
             }
 
             override fun onBillingServiceDisconnected() {
-                Log.w("MainActivity", "Billing service disconnected")
+                Toast.makeText(this@MainActivity, "Billing service disconnected", Toast.LENGTH_SHORT).show()
             }
         })
+
+        buyButton.setOnClickListener { launchPurchaseFlow() }
     }
 
-    private fun startPurchaseFlow() {
+    // 🔹 Google Sign-In Flow
+    private fun signInWithGoogle() {
+        val signInIntent = googleSignInClient.signInIntent
+        startActivityForResult(signInIntent, RC_SIGN_IN)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if (requestCode == RC_SIGN_IN) {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(data)
+            try {
+                val account = task.getResult(ApiException::class.java)
+                Toast.makeText(this, "Signed in: ${account?.email}", Toast.LENGTH_SHORT).show()
+            } catch (e: ApiException) {
+                Toast.makeText(this, "Sign-in failed: ${e.statusCode}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // 🔹 Start Google Play Billing purchase
+    private fun launchPurchaseFlow() {
+        val skuList = listOf(PRODUCT_ID)
         val params = SkuDetailsParams.newBuilder()
-            .setSkusList(listOf(SKU_ID))
+            .setSkusList(skuList)
             .setType(BillingClient.SkuType.INAPP)
             .build()
 
         billingClient.querySkuDetailsAsync(params) { billingResult, skuDetailsList ->
-            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && !skuDetailsList.isNullOrEmpty()) {
-                val sku = skuDetailsList[0]
-                val flowParams = BillingFlowParams.newBuilder().setSkuDetails(sku).build()
-                billingClient.launchBillingFlow(this, flowParams)
-            } else {
-                Toast.makeText(this, "Product not available", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    override fun onPurchasesUpdated(billingResult: BillingResult, purchases: MutableList<Purchase>?) {
-        if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
-            for (purchase in purchases) {
-                handlePurchase(purchase)
-            }
-        } else if (billingResult.responseCode == BillingClient.BillingResponseCode.USER_CANCELED) {
-            Toast.makeText(this, "Purchase canceled", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, "Purchase error: ${billingResult.debugMessage}", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun handlePurchase(purchase: Purchase) {
-        // Acknowledge the purchase (recommended)
-        if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
-            if (!purchase.isAcknowledged) {
-                val ackParams = AcknowledgePurchaseParams.newBuilder()
-                    .setPurchaseToken(purchase.purchaseToken)
-                    .build()
-                billingClient.acknowledgePurchase(ackParams) { ackResult ->
-                    if (ackResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                        // Send token to backend to grant credits
-                        sendPurchaseTokenToServer(purchase.purchaseToken)
-                    } else {
-                        Log.w("MainActivity", "Ack failed: ${ackResult.debugMessage}")
-                    }
-                }
-            } else {
-                sendPurchaseTokenToServer(purchase.purchaseToken)
-            }
-        }
-    }
-
-    private fun sendPurchaseTokenToServer(purchaseToken: String) {
-        val token = Storage.getToken(this) ?: run {
-            Toast.makeText(this, "Login required to redeem purchase", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val bearer = "Bearer $token"
-        val req = AddCreditsRequest(PACKAGE_NAME, SKU_ID, purchaseToken, 10) // grant 10 credits
-        ApiClient.instance.addCredits(bearer, req).enqueue(object: Callback<Map<String, Any>> {
-            override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
-                if (response.isSuccessful) {
-                    Toast.makeText(this@MainActivity, "Credits added!", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(this@MainActivity, "Server verification failed", Toast.LENGTH_SHORT).show()
+            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && skuDetailsList != null) {
+                for (skuDetails in skuDetailsList) {
+                    val flowParams = BillingFlowParams.newBuilder()
+                        .setSkuDetails(skuDetails)
+                        .build()
+                    billingClient.launchBillingFlow(this, flowParams)
                 }
             }
-            override fun onFailure(call: Call<Map<String, Any>>, t: Throwable) {
-                Toast.makeText(this@MainActivity, "Network error: ${t.localizedMessage}", Toast.LENGTH_SHORT).show()
-            }
-        })
+        }
     }
 
-    override fun onDestroy() {
-        if (::billingClient.isInitialized) billingClient.endConnection()
-        super.onDestroy()
+    // 🔹 Verify purchase with your backend
+    private fun verifyPurchase(purchase: Purchase) {
+        // TODO: Send purchase.purchaseToken + purchase.products[0] to your Flask backend (/verify_purchase)
+        Toast.makeText(this, "Purchase verified locally (send to backend)", Toast.LENGTH_SHORT).show()
     }
 }
+
 
