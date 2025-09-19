@@ -1,27 +1,22 @@
 import os
-import json
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
+from werkzeug.security import check_password_hash
+
+from helpers import create_user, get_user_by_email, verify_play_purchase
+from models import db, User
 
 app = Flask(__name__)
 CORS(app)
 
-# Google Play config
-PACKAGE_NAME = "com.ideascanner"  # Replace with your actual package name
-SCOPES = ["https://www.googleapis.com/auth/androidpublisher"]
+# Config
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///ideascanner.db")
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "super-secret-key")
 
-# Load credentials from environment variable (Render-friendly)
-try:
-    service_account_info = json.loads(os.environ["GOOGLE_PLAY_CREDENTIALS"])
-    credentials = service_account.Credentials.from_service_account_info(
-        service_account_info, scopes=SCOPES
-    )
-    service = build("androidpublisher", "v3", credentials=credentials)
-except Exception as e:
-    service = None
-    print("⚠️ Google Play API not initialized:", e)
+db.init_app(app)
+jwt = JWTManager(app)
 
 
 @app.route("/")
@@ -29,78 +24,85 @@ def home():
     return jsonify({"message": "IdeaScanner backend is running"})
 
 
-@app.route("/verify_purchase", methods=["POST"])
-def verify_purchase():
-    """
-    Verifies a Google Play in-app purchase or subscription with the purchaseToken.
-    Request JSON:
-    {
-        "purchase_token": "...",
-        "product_id": "...",
-        "type": "product" | "subscription"
-    }
-    """
-    if not service:
-        return jsonify({"error": "Google Play API not initialized"}), 500
+# --------------------------
+# Auth endpoints
+# --------------------------
 
+@app.route("/register", methods=["POST"])
+def register():
+    data = request.json
+    email = data.get("email")
+    password = data.get("password")
+    location = data.get("location")
+
+    if not email or not password:
+        return jsonify({"error": "Email and password are required"}), 400
+
+    if get_user_by_email(email):
+        return jsonify({"error": "User already exists"}), 400
+
+    user = create_user(email=email, password=password, location=location)
+    return jsonify({"message": "User registered successfully", "user_id": user.id})
+
+
+@app.route("/login", methods=["POST"])
+def login():
+    data = request.json
+    email = data.get("email")
+    password = data.get("password")
+
+    if not email or not password:
+        return jsonify({"error": "Email and password are required"}), 400
+
+    user = get_user_by_email(email)
+    if not user or not check_password_hash(user.password_hash, password):
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    access_token = create_access_token(identity=user.id)
+    return jsonify({"access_token": access_token, "user_id": user.id})
+
+
+@app.route("/me", methods=["GET"])
+@jwt_required()
+def me():
+    user_id = get_jwt_identity()
+    user = User.query.get(user_id)
+    return jsonify({"id": user.id, "email": user.email, "location": user.location})
+
+
+# --------------------------
+# Purchase verification
+# --------------------------
+
+@app.route("/verify_purchase", methods=["POST"])
+@jwt_required()  # require login to verify purchases
+def verify_purchase():
     data = request.json
     purchase_token = data.get("purchase_token")
     product_id = data.get("product_id")
-    purchase_type = data.get("type", "product")  # default = product
 
     if not purchase_token or not product_id:
         return jsonify({"error": "Missing purchase_token or product_id"}), 400
 
     try:
-        if purchase_type == "subscription":
-            request_obj = (
-                service.purchases()
-                .subscriptions()
-                .get(
-                    packageName=PACKAGE_NAME,
-                    subscriptionId=product_id,
-                    token=purchase_token,
-                )
-            )
-        else:  # default to product
-            request_obj = (
-                service.purchases()
-                .products()
-                .get(
-                    packageName=PACKAGE_NAME,
-                    productId=product_id,
-                    token=purchase_token,
-                )
-            )
-
-        result = request_obj.execute()
-
-        # Extract useful fields only
-        purchase_data = {
-            "purchaseState": result.get("purchaseState"),  # 0 = purchased
-            "consumptionState": result.get("consumptionState"),
-            "orderId": result.get("orderId"),
-            "purchaseTimeMillis": result.get("purchaseTimeMillis"),
-            "expiryTimeMillis": result.get("expiryTimeMillis"),  # only for subs
-            "acknowledgementState": result.get("acknowledgementState"),
-        }
-
-        if purchase_data.get("purchaseState") == 0:
-            return jsonify(
-                {"status": "success", "message": "Purchase verified", "data": purchase_data}
-            )
+        ok = verify_play_purchase("com.ideascanner", product_id, purchase_token)
+        if ok:
+            return jsonify({"status": "success", "message": "Purchase verified"})
         else:
-            return jsonify(
-                {"status": "failed", "message": "Purchase not valid", "data": purchase_data}
-            )
-
+            return jsonify({"status": "failed", "message": "Purchase not valid"})
     except Exception as e:
-        print("Google Play verification error:", e)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+# --------------------------
+# Init
+# --------------------------
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)
+    with app.app_context():
+        db.create_all()
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
+
 
 
 
