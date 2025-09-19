@@ -36,3 +36,4 @@ class Purchase(db.Model):
     status = db.Column(db.String(50), default="pending")  # pending/success/failed
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+
